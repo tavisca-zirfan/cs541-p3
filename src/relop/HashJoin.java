@@ -46,17 +46,17 @@ public class HashJoin extends Iterator {
     	
     }
     
-    verify();
+    //verify();
     
   }
 
-  public void verify(){
+/*  public void verify(){
 	  if (left instanceof FileScan)
 	  BucketScan b = left.openScan();
 	  while (b.hasNext()){
 		  System.out.println (b.getNext())
 	  }
-  }
+  }*/
   /**
    * Gives a one-line explaination of the iterator, repeats the call on any
    * child iterators, and increases the indent depth along the way.

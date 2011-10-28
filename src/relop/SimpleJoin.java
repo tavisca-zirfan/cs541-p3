@@ -10,6 +10,8 @@ public class SimpleJoin extends Iterator {
 	private Iterator riter;
 	private Predicate[] predicates;	
 	private Tuple ltuple;
+	private Tuple _saved;
+	private boolean _is_open;
 
   /**
    * Constructs a join, given the left and right iterators and join predicates
@@ -17,10 +19,12 @@ public class SimpleJoin extends Iterator {
    */
   public SimpleJoin(Iterator left, Iterator right, Predicate... preds) {
 	  liter = left;
-	  riter = right;
+	  riter = right;		// you cud call here, liter.restart() and riter.restart() to make sure in this ctor, u always do fresh start
 	  predicates = preds;
 	  this.schema = Schema.join(left.schema, right.schema);
 	  ltuple = liter.getNext();
+	  _saved = null;
+	  _is_open = true;						// vkc: i think this var is needed ... and it is changed on basis of internal iterators
   }
 
   /**
@@ -37,13 +41,16 @@ public class SimpleJoin extends Iterator {
   public void restart() {
     liter.restart();
     riter.restart();
+    _is_open = true;
+    _saved = null;
   }
 
   /**
    * Returns true if the iterator is open; false otherwise.
    */
   public boolean isOpen() {
-    return liter.isOpen() & riter.isOpen();
+    //return liter.isOpen() & riter.isOpen();
+	  return _is_open;
   }
 
   /**
@@ -52,15 +59,51 @@ public class SimpleJoin extends Iterator {
   public void close() {
     liter.close();
     riter.close();
+    _is_open = false;
+    _saved = null;
   }
 
   /**
    * Returns true if there are more tuples, false otherwise.
    */
   public boolean hasNext() {
-    // Assuming the liter is the outer relation.
-	// So, the join will have no more tuples when the outer relation ends.
-	  return liter.hasNext();
+	  // Assuming the liter is the outer relation.
+	  /*
+	   * If you have a valid _saved, return that,
+	   * else dig further with help of iterators and see if there is any existing tuple that satisfy the predicate which u can 
+	   * deliver to caller and save that in _saved
+	   */
+	  if (_saved != null){
+		  return true;
+	  }
+
+	  Tuple rtuple;
+	  Tuple newtuple = new Tuple(schema);
+	  boolean eval = true;
+
+	  while (liter.hasNext()) {
+		  if (!riter.hasNext()) {
+			  ltuple = liter.getNext();
+			  riter.restart();
+		  }
+		  do {
+			  eval = true;
+			  rtuple = riter.getNext();
+			  newtuple = Tuple.join(ltuple, rtuple, schema);
+			  for (Predicate p : predicates) {
+				  if (!p.evaluate(newtuple)) {
+					  eval = false;
+					  break;
+				  }
+			  }
+			  if (eval) {
+				  _saved = newtuple;
+				  return true;
+			  }
+		  } while (riter.hasNext());			// vkc: is this do-while OK here ?
+	  }
+
+	  return false;
   }
 
   /**
@@ -69,7 +112,11 @@ public class SimpleJoin extends Iterator {
    * @throws IllegalStateException if no more tuples
    */
 	public Tuple getNext() {
-		// Tuple ltuple = new Tuple(lschema);
+		if (_saved != null){
+			Tuple t = _saved;
+			_saved = null;
+			return t;
+		}
 		Tuple rtuple;
 		Tuple newtuple = new Tuple(schema);
 		boolean eval = true;
@@ -97,7 +144,7 @@ public class SimpleJoin extends Iterator {
 				return newtuple;
 			}
 		}
-		return null;
+		throw new IllegalStateException ("No new tuple found");
 	}
 
 } // public class SimpleJoin extends Iterator

@@ -9,6 +9,8 @@ public class Selection extends Iterator {
 	
 	private Iterator scan;
 	private Predicate[] predicates;
+	private Tuple _saved;
+	private boolean _isClosed;
   /**
    * Constructs a selection, given the underlying iterator and predicates.
    */
@@ -16,6 +18,8 @@ public class Selection extends Iterator {
     scan = iter;
     schema = scan.schema;
     predicates = preds;
+    _saved = null;
+    _isClosed = false;
   }
 
   /**
@@ -23,7 +27,9 @@ public class Selection extends Iterator {
    * child iterators, and increases the indent depth along the way.
    */
   public void explain(int depth) {
-// TODO: What to do??
+	  // TODO: What to do??
+      System.out.println("Selection");
+      indent(depth);
   }
 
   /**
@@ -31,6 +37,8 @@ public class Selection extends Iterator {
    */
   public void restart() {
 	 scan.restart();    
+	 _saved = null;
+	 _isClosed = false;
   }
 
   /**
@@ -39,23 +47,50 @@ public class Selection extends Iterator {
   public boolean isOpen() {
 	  //TODO: Dont kno if i return false,does that mean that there wud be no more tuples
 	  // that satisfy the predicate, or there are no more tuples at all
-    return scan.isOpen();
+    //return scan.isOpen();
+	  return !_isClosed;
   }
 
   /**
    * Closes the iterator, releasing any resources (i.e. pinned pages).
    */
   public void close() {
-   scan.close();
+	  scan.close();
+	  _saved = null;
+	  _isClosed = true;
   }
 
   /**
    * Returns true if there are more tuples, false otherwise.
    */
   public boolean hasNext() {
-	//TODO: Dont kno if i return false,does that mean that there wud be no more tuples
-	  // that satisfy the predicate, or there are no more tuples at all
-    return scan.hasNext();
+	/*
+	 * If you have a valid _saved, return that,
+	 * else dig further with help of iterators and see if there is any existing tuple that satisfy the predicate which u can 
+	 * deliver to caller and save that in _saved
+	 */
+	  
+	  if (_saved != null)
+		  return true;
+	  else {
+		  Tuple t;
+			if (scan != null) {
+				while (scan.hasNext()) {
+					t = scan.getNext();
+					boolean eval = false;			// done on based of OR operator, so its OK if any of predicate is true
+					for (Predicate p : predicates) {
+						eval = eval | p.evaluate(t);
+						if (eval == true)
+							break;
+					}
+					if (eval) {
+						_saved = t;
+						return true;
+					}
+				}
+			}
+		  return false;
+	  }
   }
 
   /**
@@ -64,11 +99,19 @@ public class Selection extends Iterator {
    * @throws IllegalStateException if no more tuples
    */
 	public Tuple getNext() {
+		/*
+		 * if you have a valid _saved, return that
+		 * else, put the same logic in hasNext() here.
+		 */
+		if (_saved != null){
+			Tuple ret = _saved;
+			_saved = null;
+			return ret;
+		}
+		
 		Tuple t;
-		//boolean flag = true;
-		if (scan != null) {			
+		if (scan != null) {
 			while (scan.hasNext()) {
-				//flag = true;
 				t = scan.getNext();
 				boolean eval = false;
 				for (Predicate p : predicates) {
@@ -78,10 +121,11 @@ public class Selection extends Iterator {
 				}
 				if (eval) {
 					return t;
+					// no need to put in _saved
 				}
 			}
 		}
-		return null;
+		throw new IllegalStateException("No more tuple left.");
 	}
 
 } // public class Selection extends Iterator
